@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v1.3.0
+
+- :rocket: Update GH Workflows
+
 ### v1.2.0
 
 - :arrow_up: Update Core Deps

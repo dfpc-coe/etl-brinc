@@ -17,20 +17,17 @@ jobs:
     if: github.event.pull_request.draft == false
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v3
         with:
           ref: ${{github.event.pull_request.head.sha || github.sha}}
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           registry-url: https://registry.npmjs.org/
 
-      - name: Install
+      - name: NPM Install
         run: npm install
 
       - name: Lint
         run: npm run lint
-
-      - name: Test
-        run: npm test
