@@ -10,6 +10,10 @@
 
 ## Version History
 
+### v1.2.0
+
+- :arrow_up: Update Core Deps
+
 ### v1.1.0
 
 - :tada: Implement Brinc UAS drone telemetry integration
