@@ -1,6 +1,6 @@
-<h1 align='center'>ETL-Template</h1>
+<h1 align='center'>ETL-Brinc</h1>
 
-<p align='center'>Template Repository for creating new ETLs</p>
+<p align='center'>Pull Brinc UAS drone telemetry into the TAK System</p>
 
 ## Development
 
@@ -17,7 +17,10 @@ When the ETL is deployed the `ETL_API` and `ETL_LAYER` variables will be provide
 ```json
 {
     "ETL_API": "http://localhost:5001",
-    "ETL_LAYER": "19"
+    "ETL_LAYER": "19",
+    "BRINC_OPAQUE_ID": "your-opaque-id",
+    "BRINC_CLIENT_ID": "your-client-id",
+    "BRINC_CLIENT_SECRET": "your-client-secret"
 }
 ```
 
@@ -33,6 +36,16 @@ npm run build
 cp .env dist/
 node dist/task.js
 ```
+
+### Configuration
+
+The ETL requires the following environment variables to authenticate with the Brinc LiveOps API:
+
+- `BRINC_OPAQUE_ID`: Your LiveOps Organization's opaque ID
+- `BRINC_CLIENT_ID`: App Client ID with `drone-telemetry.read` scope
+- `BRINC_CLIENT_SECRET`: App Client secret
+
+These credentials can be obtained from your organization administrator or by logging into LiveOps and visiting the Developer Portal.
 
 ### Deployment
 

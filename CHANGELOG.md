@@ -10,6 +10,14 @@
 
 ## Version History
 
+### v1.1.0
+
+- :tada: Implement Brinc UAS drone telemetry integration
+- :rocket: Fetch drone list and telemetry from Brinc LiveOps API
+- :rocket: Convert drone locations to GeoJSON features for TAK
+- :arrow_up: Update to Node 24
+- :arrow_up: Update Core Dependencies
+
 ### v1.0.1
 
 - :arrow_up: Update Core Deps
