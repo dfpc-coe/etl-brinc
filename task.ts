@@ -1,5 +1,6 @@
 import type { Static, TSchema } from '@sinclair/typebox';
 import { Type } from '@sinclair/typebox';
+import { Value } from '@sinclair/typebox/value';
 import type { Event } from '@tak-ps/etl';
 import { Feature } from '@tak-ps/node-cot'
 import ETL, { SchemaType, handler as internal, local, DataFlowType, InvocationType } from '@tak-ps/etl';
@@ -36,6 +37,38 @@ const OutputSchema = Type.Object({
     online: Type.Optional(Type.Boolean())
 })
 
+const TokenResponse = Type.Object({
+    access_token: Type.String()
+});
+
+const DroneList = Type.Object({
+    items: Type.Array(Type.Object({
+        deviceId: Type.String()
+    })),
+    nextPageToken: Type.Optional(Type.Union([Type.String(), Type.Null()]))
+});
+
+const DroneTelemetry = Type.Object({
+    items: Type.Array(Type.Object({
+        deviceId: Type.String(),
+        flightUUID: Type.Optional(Type.Unknown()),
+        flightTime: Type.Optional(Type.Unknown()),
+        lat: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+        long: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+        altAgl: Type.Optional(Type.Unknown()),
+        altMsl: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+        horizontalSpeed: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+        heading: Type.Optional(Type.Union([Type.Number(), Type.Null()])),
+        verticalSpeed: Type.Optional(Type.Unknown()),
+        armed: Type.Optional(Type.Unknown()),
+        batteryPercent: Type.Optional(Type.Unknown()),
+        charging: Type.Optional(Type.Unknown()),
+        softwareVersion: Type.Optional(Type.Unknown()),
+        online: Type.Optional(Type.Union([Type.Boolean(), Type.Null()]))
+    })),
+    errors: Type.Optional(Type.Array(Type.Unknown()))
+});
+
 export default class Task extends ETL {
     static name = 'etl-brinc'
     static flow = [ DataFlowType.Incoming ];
@@ -45,15 +78,9 @@ export default class Task extends ETL {
         type: SchemaType = SchemaType.Input,
         flow: DataFlowType = DataFlowType.Incoming
     ): Promise<TSchema> {
-        if (flow === DataFlowType.Incoming) {
-            if (type === SchemaType.Input) {
-                return InputSchema;
-            } else {
-                return OutputSchema;
-            }
-        } else {
-            return Type.Object({});
-        }
+        if (flow !== DataFlowType.Incoming) return Type.Object({});
+
+        return type === SchemaType.Input ? InputSchema : OutputSchema;
     }
 
     async control(): Promise<void> {
@@ -83,7 +110,9 @@ export default class Task extends ETL {
             throw new Error(`Failed to get access token: ${tokenRes.status} ${tokenRes.statusText}`);
         }
 
-        const tokenData = await tokenRes.json() as { access_token: string };
+        const tokenData: unknown = await tokenRes.json();
+        if (!Value.Check(TokenResponse, tokenData)) throw new Error('Unexpected access token response');
+
         const accessToken = tokenData.access_token;
 
         console.log('ok - access token obtained');
@@ -109,13 +138,14 @@ export default class Task extends ETL {
                 throw new Error(`Failed to list drones: ${listRes.status} ${listRes.statusText}`);
             }
 
-            const listData = await listRes.json() as { items: Array<{ deviceId: string }>; nextPageToken?: string };
-            
+            const listData: unknown = await listRes.json();
+            if (!Value.Check(DroneList, listData)) throw new Error('Unexpected drone list response');
+
             for (const drone of listData.items) {
                 deviceIds.push(drone.deviceId);
             }
 
-            pageToken = listData.nextPageToken;
+            pageToken = listData.nextPageToken ?? undefined;
         } while (pageToken);
 
         console.log(`ok - found ${deviceIds.length} drones`);
@@ -144,37 +174,19 @@ export default class Task extends ETL {
             throw new Error(`Failed to get telemetry: ${telemetryRes.status} ${telemetryRes.statusText}`);
         }
 
-        const telemetryData = await telemetryRes.json() as {
-            items: Array<{
-                deviceId: string;
-                flightUUID?: string;
-                flightTime?: number;
-                lat?: number;
-                long?: number;
-                altAgl?: number;
-                altMsl?: number;
-                horizontalSpeed?: number;
-                heading?: number;
-                verticalSpeed?: number;
-                armed?: boolean;
-                batteryPercent?: number;
-                charging?: boolean;
-                softwareVersion?: string;
-                online?: boolean;
-            }>;
-            errors: Array<{ deviceId: string; code: string; message: string }>;
-        };
+        const telemetryData: unknown = await telemetryRes.json();
+        if (!Value.Check(DroneTelemetry, telemetryData)) throw new Error('Unexpected drone telemetry response');
 
         console.log(`ok - received telemetry for ${telemetryData.items.length} drones`);
 
-        if (env.DEBUG && telemetryData.errors.length > 0) {
+        if (env.DEBUG && telemetryData.errors && telemetryData.errors.length > 0) {
             console.log(`ok - ${telemetryData.errors.length} drones had errors:`, telemetryData.errors);
         }
 
         const features: Static<typeof Feature.InputFeature>[] = [];
 
         for (const drone of telemetryData.items) {
-            if (drone.lat === undefined || drone.long === undefined) {
+            if (drone.lat === undefined || drone.lat === null || drone.long === undefined || drone.long === null) {
                 if (env.DEBUG) {
                     console.log(`skipping drone ${drone.deviceId} - no location data`);
                 }
@@ -187,7 +199,8 @@ export default class Task extends ETL {
                 type: 'Feature',
                 properties: {
                     course: drone.heading ?? 0,
-                    speed: (drone.horizontalSpeed ?? 0) * 0.44704, // mph => m/s
+                    // mph => m/s
+                    speed: (drone.horizontalSpeed ?? 0) * 0.44704,
                     callsign: drone.deviceId,
                     time: new Date().toISOString(),
                     start: new Date().toISOString(),
@@ -210,7 +223,7 @@ export default class Task extends ETL {
                 },
                 geometry: {
                     type: 'Point',
-                    coordinates: [drone.long, drone.lat, drone.altMsl ? drone.altMsl * 0.3048 : 0]
+                    coordinates: [drone.long, drone.lat, (drone.altMsl ?? 0) * 0.3048]
                 }
             };
 
@@ -227,7 +240,7 @@ export default class Task extends ETL {
 }
 
 await local(await Task.init(import.meta.url), import.meta.url);
-export async function handler(event: Event = {}) {
-    return await internal(new Task(import.meta.url), event);
+export async function handler(event: Event = {}): ReturnType<typeof internal> {
+    return internal(new Task(import.meta.url), event);
 }
 
